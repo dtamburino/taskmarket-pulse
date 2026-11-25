@@ -159,7 +159,39 @@ function signal(){
   }
 }
 
-const view=document.documentElement.dataset.view;
+const pathView=document.documentElement.dataset.view;
+const tabs=[...$('dashboardTabs').querySelectorAll('[role="tab"]')];
+const hashViews={overview:'trends',chains:'trends',concentration:'trends','bounty-signal':'bounties','bounty-outcomes':'outcomes',heat:'activity',feed:'activity',methods:'methods'};
+let activeView='outcomes';
+function requestedView(){
+  const url=new URL(location.href);
+  const wanted=hashViews[url.hash.slice(1)]??url.searchParams.get('view')??(pathView==='signal'?'bounties':pathView);
+  return tabs.some(x=>x.dataset.view===wanted)?wanted:'outcomes';
+}
+function switchView(view,{write=false,focus=false}={}){
+  if(!tabs.some(x=>x.dataset.view===view))return;
+  activeView=view;
+  for(const tab of tabs){
+    const yes=tab.dataset.view===view;
+    tab.setAttribute('aria-selected',String(yes));tab.tabIndex=yes?0:-1;$(tab.getAttribute('aria-controls')).hidden=!yes;
+    if(yes&&focus)tab.focus();
+  }
+  document.querySelector('.skip').href='#panel-'+view;
+  if(write){const url=new URL(location.href);url.searchParams.set('view',view);url.hash='';history.replaceState(null,'',url);}
+}
+$('dashboardTabs').onclick=e=>{const tab=e.target.closest('[role="tab"]');if(tab)switchView(tab.dataset.view,{write:true});};
+$('dashboardTabs').onkeydown=e=>{
+  const at=tabs.findIndex(x=>x===e.target);if(at<0)return;
+  const n=({ArrowRight:(at+1)%tabs.length,ArrowLeft:(at+tabs.length-1)%tabs.length,Home:0,End:tabs.length-1})[e.key];
+  if(n===undefined)return;e.preventDefault();switchView(tabs[n].dataset.view,{write:true,focus:true});
+};
+addEventListener('hashchange',()=>{const view=requestedView();switchView(view);const dest=location.hash.slice(1);if(hashViews[dest])$(dest)?.scrollIntoView();});
+addEventListener('popstate',()=>switchView(requestedView()));
+document.querySelector('.skip').onclick=e=>{
+  if($('surface').hidden)return;
+  e.preventDefault();const panel=$('panel-'+activeView);panel.focus();panel.scrollIntoView();
+};
+switchView(requestedView());
 let outcomeChain=new URLSearchParams(location.search).get('chain')==='base'?8453:4217;
 let outcomeDay;
 const outcomeLabels={awarded:'Award recorded',review:'Pending',closed:'Closed without an award'};
@@ -172,6 +204,12 @@ function outcomes(){
   const from=state.chains[id].from;
   $('outcomeCoverage').textContent=from?'Collection covers public bounties posted on or after '+short.format(iso(from))+' UTC.':'';
   const keys=Object.keys(outcomeLabels), total=Object.values(data.totals).reduce((a,b)=>a+b,0), days=Object.entries(data.days);
+  const share=$('outcomeTakeaway');
+  if(total){
+    const pct=Math.round(100*data.totals.awarded/total);
+    share.replaceChildren(node('strong',num.format(data.totals.awarded)+' of '+num.format(total)),
+      document.createTextNode(' '+label(id)+' bounties recorded an award ('+pct+'%).'));
+  }else share.textContent='No '+label(id)+' bounty deadlines in this snapshot.';
   cards.append(card('Bounties with a deadline',num.format(total)),...keys.map(k=>card(outcomeLabels[k],num.format(data.totals[k]))));
   const max=Math.max(1,...days.map(([,c])=>Object.values(c).reduce((a,b)=>a+b,0)));
   const chart=node('div',null,'outcomePlot');
@@ -218,10 +256,13 @@ async function load(){
     const res=await fetch('./api/snapshot.json');if(!res.ok)throw Error();
     state=await res.json();stamp();
     overview();chainView();depth();signal();outcomes();mix();feed();heat();sourceLog();$('surface').hidden=false;
-    if(initial&&view==='signal')$('bounty-signal').scrollIntoView();
-    if(initial&&view==='outcomes')$('bounty-outcomes').scrollIntoView();
+    if(initial){
+      switchView(requestedView());
+      const anchor=location.hash.slice(1);
+      if(hashViews[anchor])requestAnimationFrame(()=>$(anchor)?.scrollIntoView());
+    }
     const o=document.querySelector('#bounty-outcomes .signalLink');o.href='./outcomes/?chain='+(outcomeChain===8453?'base':'tempo');
-    if(initial&&signalChain===8453)document.querySelector('.signalLink').href='./signal/?chain=base';
+    if(initial&&signalChain===8453)document.querySelector('#bounty-signal .signalLink').href='./signal/?chain=base';
     initial=false;
   }catch{if(state){state.stale=true;stamp()}else $('stamp').textContent='Live data is temporarily unavailable. Reload to try again.'}
 }
@@ -232,7 +273,7 @@ $('signalControls').onclick=e=>{
   if(!e.target.dataset.chain||!state)return;
   signalChain=Number(e.target.dataset.chain);
   const u=new URL(location.href);u.searchParams.set('chain',signalChain===8453?'base':'tempo');history.replaceState(null,'',u);signal();
-  const a=document.querySelector('.signalLink');a.href='./signal/?chain='+(signalChain===8453?'base':'tempo');
+  const a=document.querySelector('#bounty-signal .signalLink');a.href='./signal/?chain='+(signalChain===8453?'base':'tempo');
 };
 $('outcomeControls').onclick=e=>{
   if(!e.target.dataset.chain||!state)return;
