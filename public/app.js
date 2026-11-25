@@ -169,6 +169,8 @@ function outcomes(){
   host.replaceChildren();cards.replaceChildren();details.replaceChildren();
   document.querySelectorAll('#outcomeControls button[data-chain]').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.chain)===id));
   if(!data){key.textContent='Outcomes will appear with the next snapshot.';return;}
+  const from=state.chains[id].from;
+  $('outcomeCoverage').textContent=from?'Collection covers public bounties posted on or after '+short.format(iso(from))+' UTC.':'';
   const keys=Object.keys(outcomeLabels), total=Object.values(data.totals).reduce((a,b)=>a+b,0), days=Object.entries(data.days);
   cards.append(card('Bounties with a deadline',num.format(total)),...keys.map(k=>card(outcomeLabels[k],num.format(data.totals[k]))));
   const max=Math.max(1,...days.map(([,c])=>Object.values(c).reduce((a,b)=>a+b,0)));

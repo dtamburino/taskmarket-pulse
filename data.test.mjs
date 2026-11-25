@@ -46,7 +46,7 @@ test('bounty signal filters by chain, submission window and reward; computes med
 
 test('deadline cohorts keep pending distinct from no award and omit partial day',()=>{
   const make=(n,day,props={})=>({id:'0x'+String(n).padStart(64,'0'),expiryTime:day+'T01:00:00Z',mode:'bounty',submissionCount:3,...props});
-  const a=deadlineOutcomes([make(1,'2026-11-18',{awardCount:2,status:'completed'}),make(2,'2026-11-24',{status:'expired'}),make(3,'2026-11-24',{phase:'resolved'}),make(4,'2026-11-25',{awardCount:1}),make(5,'2026-11-17'),make(6,'2026-11-19',{taskVisibility:'unlisted'})],new Date('2026-11-25T04:00:00Z'));
+  const a=deadlineOutcomes([make(1,'2026-11-18',{awardCount:2,status:'completed'}),make(2,'2026-11-24',{status:'open',phase:'awaiting_settlement'}),make(3,'2026-11-24',{status:'expired'}),make(4,'2026-11-25',{awardCount:1}),make(5,'2026-11-17'),make(6,'2026-11-19',{taskVisibility:'unlisted'})],new Date('2026-11-25T04:00:00Z'));
   assert.deepEqual(a.totals,{awarded:1,review:1,closed:1});
   assert.equal(Object.keys(a.days).length,7);
   assert.deepEqual(a.days['2026-11-24'],{awarded:0,review:1,closed:1});

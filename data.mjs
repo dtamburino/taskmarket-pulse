@@ -58,7 +58,7 @@ export function deadlineOutcomes(tasks, now) {
     const deadline=Date.parse(t.expiryTime);
     if(!publicTask(t)||t.mode!=='bounty'||!/^0x[0-9a-f]{64}$/i.test(t.id??'')||!Number.isFinite(deadline)||deadline<+start||deadline>=+midnight)continue;
     const awards=Number(t.awardCount??0);
-    const status=awards>0?'awarded':(t.phase==='resolved'||t.status==='cancelled'||t.status==='completed')?'closed':'review';
+    const status=awards>0?'awarded':(t.phase==='resolved'||['cancelled','completed','expired'].includes(t.status))?'closed':'review';
     const day=new Date(deadline).toISOString().slice(0,10);
     totals[status]++;days[day][status]++;
     cases.push({id:t.id,title:titleOf(t),day,state:status,awards,entries:Number(t.submissionCount??0)});
