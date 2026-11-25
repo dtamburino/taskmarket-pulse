@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 8
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
     environment:
@@ -35,5 +36,17 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+      - name: Wait for Pages artifact indexing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in {1..20}; do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[].name' | grep -qx github-pages; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Pages artifact did not become visible" >&2
+          exit 1
       - uses: actions/deploy-pages@v4
         id: deployment

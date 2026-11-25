@@ -53,6 +53,21 @@ function chainView(){
     el.append(node('p','Last 7 UTC calendar days','label'),node('p',num.format(c.stats.paidWorkers)+' paid workers · '+num.format(c.stats.activeWallets)+' active wallets (API totals)','label'));return el;
   }));
   const dates=[...new Set(ids.flatMap(id=>Object.keys(state.chains[id].weeks)))].sort().reverse();
+  const max=Math.max(1,...ids.flatMap(id=>Object.values(state.chains[id].weeks)));
+  const blocks=dates.slice().reverse().map(d=>{
+    const group=node('div',null,'week'), bars=node('div',null,'weekBars');
+    for(const id of ids){
+      const count=state.chains[id].weeks[d]??0,c=node('div',null,'weekBar');
+      c.style.setProperty('--bar',Math.max(1,100*count/max)+'%');c.dataset.chain=label(id);
+      c.title=label(id)+' · '+short.format(iso(d))+' · '+num.format(count)+' posters';
+      c.append(node('span',num.format(count)));
+      bars.append(c);
+    }
+    group.append(bars,node('span',short.format(iso(d)),'label'));return group;
+  });
+  const line=node('div',null,'weekPlot');line.append(...blocks);
+  const legend=node('div',null,'legend');legend.append(node('span','Base'),node('span','Tempo'));
+  $('postersChart').replaceChildren(line,legend);
   $('posters').replaceChildren(table(['Week of (UTC)','Base','Tempo'],dates.map(d=>[short.format(iso(d)),...ids.map(id=>state.chains[id].complete?num.format(state.chains[id].weeks[d]??0):'≥'+num.format(state.chains[id].weeks[d]??0))])));
 }
 function mix(){
