@@ -70,6 +70,27 @@ function chainView(){
   $('postersChart').replaceChildren(line,legend);
   $('posters').replaceChildren(table(['Week of (UTC)','Base','Tempo'],dates.map(d=>[short.format(iso(d)),...ids.map(id=>state.chains[id].complete?num.format(state.chains[id].weeks[d]??0):'≥'+num.format(state.chains[id].weeks[d]??0))])));
 }
+function depth(){
+  const ids=[8453,4217], host=$('depth');
+  host.replaceChildren(...ids.map(id=>{
+    const c=state.chains[id].concentration;
+    if(!c)return node('p','Concentration will appear on the next refresh.','muted');
+    const wrap=node('article',null,'depthRow'),header=node('div',null,'depthHead');
+    const pct=n=>Math.round(n*100/Math.max(c.tasks,1));
+    const rest=c.tasks-c.top-c.nextTwo;
+    const shares=[c.top,c.nextTwo,rest], labels=['Top wallet','Next two','All others'];
+    header.append(node('strong',label(id)),node('span',num.format(c.wallets)+' wallets · '+num.format(c.tasks)+' tasks','label'));wrap.append(header);
+    const band=node('div',null,'depthBand');band.setAttribute('aria-hidden','true');
+    const key=node('div',null,'depthKey');
+    shares.forEach((amount,i)=>{
+      const block=node('div');block.style.flexGrow=amount;block.dataset.rank=i;band.append(block);
+      const badge=node('span',labels[i]+' · '+pct(amount)+'%');badge.dataset.rank=i;key.append(badge);
+    });
+    if(c.tasks)wrap.append(band,key,node('p',`${pct(c.top)}% of new ${label(id)} tasks came from its busiest posting wallet.`,'muted'));
+    else wrap.append(node('p','No tasks with a requester were published in this period.','muted'));
+    return wrap;
+  }));
+}
 function mix(){
   $('mix').replaceChildren();
   for(const [key,title] of [['mode','Task mode'],['status','Task status']]){
@@ -102,7 +123,7 @@ async function load(){
   try{
     const res=await fetch('./api/snapshot.json');if(!res.ok)throw Error();
     state=await res.json();$('stamp').textContent=(state.stale?'Last available snapshot · ':'Data as of ')+dt.format(iso(state.asOf))+' UTC';
-    overview();chainView();mix();feed();heat();$('surface').hidden=false;
+    overview();chainView();depth();mix();feed();heat();$('surface').hidden=false;
   }catch{$('stamp').textContent='Live data is temporarily unavailable. Reload to try again.'}
 }
 $('ranges').onclick=e=>{if(!e.target.dataset.range||!state)return;range=Number(e.target.dataset.range);const u=new URL(location.href);u.searchParams.set('range',range);history.replaceState(null,'',u);overview()};

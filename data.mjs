@@ -21,6 +21,17 @@ export function summarize(tasks) {
   }
   return {weeks:Object.fromEntries([...weeks].sort().map(([w,s])=>[w,s.size])),days:Object.fromEntries([...days].sort())};
 }
+export function concentration(tasks, since) {
+  const counts=new Map();
+  for(const t of tasks) {
+    if(t.createdAt.slice(0,10)<since||!t.requester) continue;
+    const wallet=t.requester.toLowerCase();
+    counts.set(wallet,1+(counts.get(wallet)??0));
+  }
+  const ranks=[...counts.values()].sort((a,b)=>b-a);
+  return {wallets:ranks.length,tasks:ranks.reduce((a,b)=>a+b,0),top:ranks[0]??0,
+    nextTwo:(ranks[1]??0)+(ranks[2]??0)};
+}
 export async function snapshot(fetcher=fetch, now=new Date()) {
   const get=async (path,params={})=>{
     const res=await fetcher(origin+path+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(9_000),headers:{accept:'application/json'}});
@@ -30,6 +41,8 @@ export async function snapshot(fetcher=fetch, now=new Date()) {
   const from=new Date(now);
   from.setUTCHours(0,0,0,0);
   from.setUTCDate(from.getUTCDate()-(from.getUTCDay()+6)%7-7*4);
+  const pastWeek=new Date(now);pastWeek.setUTCDate(pastWeek.getUTCDate()-6);
+  const since=pastWeek.toISOString().slice(0,10);
   const scan=async chainId=>{
     const tasks=new Map();
     let cursor, complete=false;
@@ -44,7 +57,7 @@ export async function snapshot(fetcher=fetch, now=new Date()) {
       if (!res.nextCursor || res.nextCursor===cursor) break;
       cursor=res.nextCursor;
     }
-    return {...summarize(tasks.values()),complete,from:from.toISOString().slice(0,10)};
+    return {...summarize(tasks.values()),concentration:concentration(tasks.values(),since),complete,from:from.toISOString().slice(0,10)};
   };
   const [stats,series,breakdowns,heat,feed,coverage]=await Promise.all([
     Promise.all(chains.map(chainId=>get('market/stats',{chainId}))),

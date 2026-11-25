@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {summarize,snapshot} from './data.mjs';
+import {summarize,snapshot,concentration} from './data.mjs';
 test('deduplicates requester addresses per UTC week, converts rewards',()=>{
   const got=summarize([
     {createdAt:'2026-11-22T23:59:59Z',requester:'0xA',reward:'1000001'},
@@ -28,4 +28,9 @@ test('deduplicates pages, rejects wrong chains, and strips actors from events',a
   assert.equal(out.series[0].rewardVolume,3.5);
   assert.equal(out.feed[0].amount,1);
   assert.ok(!('actor' in out.feed[0]));
+});
+
+test('market depth counts only in-range tasks and does not expose addresses',()=>{
+  const a=[['2026-11-17','old'],['2026-11-23','A'],['2026-11-24','a'],['2026-11-24','b'],['2026-11-24','c'],['2026-11-24','d']].map(([createdAt,requester])=>({createdAt,requester}));
+  assert.deepEqual(concentration(a,'2026-11-19'),{wallets:4,tasks:5,top:2,nextTwo:2});
 });
