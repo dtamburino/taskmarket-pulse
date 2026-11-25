@@ -11,9 +11,11 @@ http.createServer(async(req,res)=>{
       const out=await api(new Request(url,{method:req.method}));
       res.writeHead(out.status,Object.fromEntries(out.headers));res.end(await out.text());return;
     }
-    const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
+    const focused=url.pathname==='/signal/';
+    const name=url.pathname==='/'||focused?'index.html':url.pathname.slice(1);
     if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)){res.writeHead(404).end();return}
-    const body=await readFile(fileURLToPath(new URL('public/'+name,import.meta.url)));
+    let body=await readFile(fileURLToPath(new URL('public/'+name,import.meta.url)));
+    if(focused)body=body.toString('utf8').replace('<html lang="en">','<html lang="en" data-view="signal">').replace('<head>','<head><base href="../">');
     res.writeHead(200,{'content-type':types[name.split('.').at(-1)]||'application/octet-stream','x-content-type-options':'nosniff'}).end(body);
   }catch(e){res.writeHead(e.code==='ENOENT'?404:500).end('Unavailable')}
 }).listen(port,process.env.HOST||'127.0.0.1',()=>console.log('Taskmarket Pulse: http://127.0.0.1:'+port));

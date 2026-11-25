@@ -32,6 +32,19 @@ export function concentration(tasks, since) {
   return {wallets:ranks.length,tasks:ranks.reduce((a,b)=>a+b,0),top:ranks[0]??0,
     nextTwo:(ranks[1]??0)+(ranks[2]??0)};
 }
+export function bountySignal(tasks, chainId) {
+  const clean=[...new Map(tasks.filter(t=>t.chainId===chainId && t.mode==='bounty' &&
+    t.submissionWindowOpen===true && /^[a-f0-9]{64}$/i.test(t.id?.slice(2)??'') &&
+    /^0x/i.test(t.id??'') && Number.isSafeInteger(t.submissionCount) && t.submissionCount>=0 &&
+    Number.isFinite(Number(t.reward)) && toDollars(t.reward)>0).map(t=>[t.id,t])).values()]
+    .map(t=>({id:t.id, title:String(t.description??'').split('\n')[0].slice(0,150).trim()||'Untitled bounty',
+      entries:t.submissionCount, pool:toDollars(t.reward),
+      expires:Number.isFinite(Date.parse(t.expiryTime))?t.expiryTime:null}));
+  clean.sort((a,b)=>a.entries-b.entries||b.pool-a.pool||a.id.localeCompare(b.id));
+  const mid=Math.floor(clean.length/2);
+  const median=clean.length?(clean[mid].entries+(clean.length%2?clean[mid].entries:clean[mid-1].entries))/2:null;
+  return {count:clean.length,light:clean.filter(t=>t.entries<10).length,median,rows:clean};
+}
 export async function snapshot(fetcher=fetch, now=new Date()) {
   const get=async (path,params={})=>{
     const res=await fetcher(origin+path+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(9_000),headers:{accept:'application/json'}});
@@ -59,15 +72,27 @@ export async function snapshot(fetcher=fetch, now=new Date()) {
     }
     return {...summarize(tasks.values()),concentration:concentration(tasks.values(),since),complete,from:from.toISOString().slice(0,10)};
   };
-  const [stats,series,breakdowns,heat,feed,coverage]=await Promise.all([
+  const open=async chainId=>{
+    const all=[];let cursor;
+    for(let i=0;i<8;i++){
+      const page=await get('tasks',{chainId,sort:'newest',status:'open',limit:100,...(cursor?{cursor}:{})});
+      all.push(...page.tasks);
+      if(!page.hasMore)return bountySignal(all,chainId);
+      if(!page.nextCursor || page.nextCursor===cursor)break;
+      cursor=page.nextCursor;
+    }
+    throw Error('Open-task pagination incomplete for '+chainId);
+  };
+  const [stats,series,breakdowns,heat,feed,coverage,signals]=await Promise.all([
     Promise.all(chains.map(chainId=>get('market/stats',{chainId}))),
     get('stats/platform-time-series',{chainId:4217,range:'90d',bucket:'day'}),
     get('stats/breakdowns',{chainId:4217}),
     get('stats/activity-heatmap',{chainId:4217}),
     get('stats/activity-feed',{chainId:4217,limit:25}),
-    Promise.all(chains.map(scan))
+    Promise.all(chains.map(scan)),
+    Promise.all(chains.map(open))
   ]);
-  return {asOf:new Date().toISOString(),series:series.map(x=>({...x,rewardVolume:toDollars(x.rewardVolume),paidVolume:toDollars(x.paidVolume)})),
+  return {asOf:new Date().toISOString(),signals:Object.fromEntries(chains.map((id,i)=>[id,signals[i]])),series:series.map(x=>({...x,rewardVolume:toDollars(x.rewardVolume),paidVolume:toDollars(x.paidVolume)})),
     breakdowns,heat:{rows:heat.rowKeys,days:heat.colKeys,cells:heat.cells.map(({row,col,count})=>({row,col,count})),max:heat.maxCount},
     feed:feed.items.filter(x=>chains.includes(x.chainId)).map(({type,timestamp,taskId,taskTitle,chainId,amount})=>({type,timestamp,taskId,taskTitle,chainId,amount:amount==null?null:toDollars(amount)})),
     chains:Object.fromEntries(chains.map((id,i)=>[id,{stats:stats[i],...coverage[i]}]))};

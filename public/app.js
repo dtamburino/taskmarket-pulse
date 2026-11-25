@@ -119,15 +119,73 @@ function heat(){
     const td=node('td'),v=cells.get(r+'|'+d)??0,c=node('button',String(v)),msg=pretty(r)+' · '+short.format(iso(d))+' UTC · '+num.format(v)+' events';c.style.setProperty('--pct',v?Math.round(18+82*Math.sqrt(v/Math.max(1,h.max)))+'%':'0%');c.type='button';c.title=msg;c.setAttribute('aria-label',msg);c.onclick=()=>$('heatDetail').textContent=msg;td.append(c);tr.append(td);
   }b.append(tr)}t.append(b);$('heat').replaceChildren(t);
 }
+let signalChain=new URLSearchParams(location.search).get('chain')==='base'?8453:4217;
+const bountyUrl=id=>'https://taskmarket.dev/tasks/'+id;
+function signal(){
+  const s=state.signals?.[signalChain], cards=$('signalCards'), plot=$('signalPlot'), detail=$('signalDetail'), shortlist=$('signalShortlist');
+  document.querySelectorAll('#signalControls button[data-chain]').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.chain)===signalChain));
+  cards.replaceChildren();plot.replaceChildren();shortlist.replaceChildren();
+  detail.textContent='Select a dot to inspect a bounty.';
+  if(!s){detail.textContent='Bounty comparison will appear with the next snapshot.';return;}
+  cards.append(card('Open bounties',num.format(s.count)),card('Under 10 submissions',num.format(s.light)),card('Median submissions',s.median===null?'—':num.format(s.median)));
+  if(!s.count){detail.textContent='No bounties accepting submissions in this snapshot.';return;}
+  const narrow=matchMedia('(max-width: 680px)').matches,W=narrow?370:740,H=narrow?230:260,x0=53,x1=W-18,y0=19,y1=H-34;
+  const maxX=Math.max(10,...s.rows.map(v=>v.entries)),maxY=Math.max(1,...s.rows.map(v=>v.pool));
+  const x=v=>x0+Math.log1p(v)/Math.log1p(maxX)*(x1-x0);
+  const y=v=>y1-Math.log1p(v)/Math.log1p(maxY)*(y1-y0);
+  const xTicks=[0,1,3,10,30,100,300,1000].filter(n=>n<=maxX);
+  const yTicks=[.1,.5,1,5,10,50,100,500,1000].filter(n=>n<=maxY);
+  const svg=svgNode('svg',{viewBox:`0 0 ${W} ${H}`,role:'group','aria-label':label(signalChain)+' bounties: published submission count and reward pool'});
+  xTicks.forEach(t=>{svg.append(svgNode('line',{x1:x(t),x2:x(t),y1:y0,y2:y1,stroke:'#453E37'}),svgNode('text',{x:x(t),y:y1+15,'text-anchor':'middle',fill:'#B0A79D','font-size':11},String(t)));});
+  yTicks.filter((t,i)=>yTicks.length<7||i%2===0).forEach(t=>{svg.append(svgNode('line',{x1:x0,x2:x1,y1:y(t),y2:y(t),stroke:'#453E37'}),svgNode('text',{x:x0-5,y:y(t)+4,'text-anchor':'end',fill:'#B0A79D','font-size':11},'$'+t));});
+  svg.append(svgNode('text',{x:x0,y:12,fill:'#B0A79D','font-size':11},'Reward pool'),svgNode('text',{x:x1,y:H-3,'text-anchor':'end',fill:'#B0A79D','font-size':11},'Submissions'));
+  let selected;
+  s.rows.slice().reverse().forEach(t=>{
+    const info=t.title+' · '+usd.format(t.pool)+' pool · '+num.format(t.entries)+' submissions';
+    const p=svgNode('circle',{cx:x(t.entries),cy:y(t.pool),r:narrow?4.5:5.5,fill:t.entries<10?'#FFF6E8':'#D9A097',opacity:.88,tabindex:0,role:'button','aria-label':info,'aria-pressed':'false',class:'signalPoint'});
+    function activate(){
+      selected?.setAttribute('aria-pressed','false');selected=p;p.setAttribute('aria-pressed','true');
+      const a=node('a',t.title);a.href=bountyUrl(t.id);
+      detail.replaceChildren(a,document.createTextNode(' · '+usd.format(t.pool)+' pool · '+num.format(t.entries)+' submissions'+(t.expires?' · closes '+dt.format(iso(t.expires))+' UTC':'')));
+    }
+    p.onclick=activate;p.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate();}};p.append(svgNode('title',{},info));svg.append(p);
+  });
+  plot.append(svg);
+  const few=s.rows.filter(t=>t.entries<10).sort((a,b)=>b.pool-a.pool||a.entries-b.entries).slice(0,3);
+  if(few.length){
+    const ul=node('ul',null,'signalShort');
+    for(const t of few){const li=node('li'),a=node('a',t.title);a.href=bountyUrl(t.id);li.append(a,node('small',usd.format(t.pool)+' pool · '+num.format(t.entries)+' entries'));ul.append(li)}
+    shortlist.append(node('strong','Largest pools with fewer than 10 submissions'),ul);
+  }
+}
+
+const focusSignal=document.documentElement.dataset.view==='signal';
+let initial=true;
+function stamp(){
+  if(!state?.asOf)return;
+  const old=Date.now()-Date.parse(state.asOf)>60*60*1000;
+  const stale=state.stale||old;
+  $('stamp').dataset.state=stale?'stale':'fresh';
+  $('stamp').textContent=(old?'Snapshot older than one hour · ':state.stale?'Refresh unavailable · Last snapshot ': 'Data as of ')+dt.format(iso(state.asOf))+' UTC';
+}
 async function load(){
   try{
     const res=await fetch('./api/snapshot.json');if(!res.ok)throw Error();
-    state=await res.json();$('stamp').textContent=(state.stale?'Last available snapshot · ':'Data as of ')+dt.format(iso(state.asOf))+' UTC';
-    overview();chainView();depth();mix();feed();heat();$('surface').hidden=false;
-  }catch{$('stamp').textContent='Live data is temporarily unavailable. Reload to try again.'}
+    state=await res.json();stamp();
+    overview();chainView();depth();signal();mix();feed();heat();$('surface').hidden=false;
+    if(initial&&focusSignal)$('bounty-signal').scrollIntoView();
+    if(initial&&signalChain===8453)document.querySelector('.signalLink').href='./signal/?chain=base';
+    initial=false;
+  }catch{if(state){state.stale=true;stamp()}else $('stamp').textContent='Live data is temporarily unavailable. Reload to try again.'}
 }
 $('ranges').onclick=e=>{if(!e.target.dataset.range||!state)return;range=Number(e.target.dataset.range);const u=new URL(location.href);u.searchParams.set('range',range);history.replaceState(null,'',u);overview()};
 $('metrics').onclick=e=>{if(e.target.dataset.metric&&state){metric=e.target.dataset.metric;overview()}};
 $('feedChain').onchange=()=>state&&feed();
-matchMedia('(max-width: 680px)').addEventListener('change',()=>state&&overview());
-load();setInterval(load,300_000);
+$('signalControls').onclick=e=>{
+  if(!e.target.dataset.chain||!state)return;
+  signalChain=Number(e.target.dataset.chain);
+  const u=new URL(location.href);u.searchParams.set('chain',signalChain===8453?'base':'tempo');history.replaceState(null,'',u);signal();
+  const a=document.querySelector('.signalLink');a.href='./signal/?chain='+(signalChain===8453?'base':'tempo');
+};
+matchMedia('(max-width: 680px)').addEventListener('change',()=>{if(state){overview();signal();}});
+load();setInterval(load,300_000);setInterval(stamp,60_000);

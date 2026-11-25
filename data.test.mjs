@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {summarize,snapshot,concentration} from './data.mjs';
+import {summarize,snapshot,concentration,bountySignal} from './data.mjs';
 test('deduplicates requester addresses per UTC week, converts rewards',()=>{
   const got=summarize([
     {createdAt:'2026-11-22T23:59:59Z',requester:'0xA',reward:'1000001'},
@@ -33,4 +33,13 @@ test('deduplicates pages, rejects wrong chains, and strips actors from events',a
 test('market depth counts only in-range tasks and does not expose addresses',()=>{
   const a=[['2026-11-17','old'],['2026-11-23','A'],['2026-11-24','a'],['2026-11-24','b'],['2026-11-24','c'],['2026-11-24','d']].map(([createdAt,requester])=>({createdAt,requester}));
   assert.deepEqual(concentration(a,'2026-11-19'),{wallets:4,tasks:5,top:2,nextTwo:2});
+});
+
+test('bounty signal filters by chain, submission window and reward; computes median',()=>{
+  const bounty=(n, entries, changes={})=>({id:'0x'+String(n).padStart(64,'0'), description:'Public title\nPrivate-independent body not included',chainId:4217,mode:'bounty',submissionWindowOpen:true,reward:'1500000',submissionCount:entries,...changes});
+  const out=bountySignal([bounty(1,0),bounty(1,0),bounty(2,9),bounty(3,15),bounty(4,2,{chainId:8453}),bounty(5,4,{submissionWindowOpen:false}),bounty(6,4,{reward:'0'})],4217);
+  assert.deepEqual([out.count,out.light,out.median],[3,2,9]);
+  assert.equal(out.rows[0].pool,1.5);
+  assert.equal(out.rows[0].title,'Public title');
+  assert.ok(!('requester' in out.rows[0]));
 });

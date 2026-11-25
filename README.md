@@ -12,7 +12,7 @@ Node.js 22+; no application dependencies or credentials.
 
 ## Deploy
 
-This repository uses GitHub Pages as its public host and scheduled GitHub Actions as its server-side fetch. For a fork, select **GitHub Actions** under Settings → Pages once. After that, `npm run deploy` triggers a fresh publication on the default branch. The workflow also refreshes at four offsets per hour. GitHub may delay a scheduled run; the site shows the last verified fetch time, and a failed fetch does not replace the previous deployment. Pages serves the cached site and JSON together. No browser requests go to Taskmarket's API.
+This repository uses GitHub Pages as its public host and scheduled GitHub Actions as its server-side fetch. For a fork, select **GitHub Actions** under Settings → Pages once. After that, `npm run deploy` triggers a fresh publication on the default branch. The workflow also refreshes at four offsets per hour. GitHub may delay a scheduled run; the site shows the last verified fetch time, and a failed fetch does not replace the previous deployment. Pages serves the cached site and JSON together. No browser requests go to Taskmarket's API. The site warns explicitly when the last snapshot is over an hour old.
 
 A Cloudflare Worker configuration is also included for installation with `npx wrangler deploy` on an already configured Workers account. The runtime adapter refreshes snapshots on access with a five-minute cache.
 
@@ -26,6 +26,7 @@ Snapshots come from Taskmarket's public production API, without credentials.
 | Task status/mode and heatmap | `/api/stats/breakdowns`, `/api/stats/activity-heatmap` |
 | Latest events | `/api/stats/activity-feed`, filtered by each event's chain |
 | Chain-specific paid workers and active wallets | `/api/market/stats` |
+| Bounty Signal: pools vs. entry counts | Status-filtered and paginated `/api/tasks`; accepting bounties only |
 | Last seven days of tasks by chain and weekly posters | Sorted, paginated `/api/tasks`, separately for each chain |
 
 Times are UTC and the current period is partial. Wallet addresses deduplicate requester counts but aren't published with the dashboard data. Base is 8453 and Tempo is 4217. The platform charts, mode breakdown, feed, and heatmap returned identical data when queried with each chain ID and are not presented as separate chain figures. The amount fields use six decimal places; dollar values represent posted stablecoin face values, not exchange prices.

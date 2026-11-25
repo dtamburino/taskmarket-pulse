@@ -18,10 +18,13 @@ let mono=NSFont(name:"DepartureMono-Regular",size:24) ?? .monospacedSystemFont(o
 let serif=NSFont(name:"InstrumentSerif-Regular",size:146) ?? .systemFont(ofSize:126,weight:.medium)
 let italic=NSFont(name:"InstrumentSerif-Italic",size:146) ?? serif
 _ = draw("TASKMARKET PULSE",mono,color(0xefe9e2),159,506)
-let w=draw("Follow the ",serif,color(0xefe9e2),80,271)
-_ = draw("work.",italic,color(0xe74079),80+w,271)
-_ = draw("Market activity across Base and Tempo",mono,color(0xb0a79d),85,218)
+let signal=CommandLine.arguments.contains("--signal")
+let titleFont=signal ? (NSFont(name:"InstrumentSerif-Regular",size:109) ?? serif) : serif
+let accentFont=signal ? (NSFont(name:"InstrumentSerif-Italic",size:109) ?? italic) : italic
+let w=draw(signal ? "Where attention " : "Follow the ",titleFont,color(0xefe9e2),80,271)
+_ = draw(signal ? "goes." : "work.",accentFont,color(0xe74079),80+w,271)
+_ = draw(signal ? "Open bounties, submissions and reward pools" : "Market activity across Base and Tempo",mono,color(0xb0a79d),85,218)
 _ = draw("taskmarket.dev",mono,color(0xd9a097),85,61)
 canvas.unlockFocus()
 let bitmap=NSBitmapImageRep(data:canvas.tiffRepresentation!)!
-try bitmap.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:"public/share.png"))
+try bitmap.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:signal ? "public/signal-share.png" : "public/share.png"))
