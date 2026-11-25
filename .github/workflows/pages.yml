@@ -42,6 +42,7 @@ jobs:
         run: |
           for i in {1..20}; do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[].name' | grep -qx github-pages; then
+              sleep 15
               exit 0
             fi
             sleep 3
