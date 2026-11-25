@@ -159,7 +159,50 @@ function signal(){
   }
 }
 
-const focusSignal=document.documentElement.dataset.view==='signal';
+const view=document.documentElement.dataset.view;
+let outcomeChain=new URLSearchParams(location.search).get('chain')==='base'?8453:4217;
+let outcomeDay;
+const outcomeLabels={awarded:'Award recorded',review:'Pending',closed:'Closed without an award'};
+function outcomes(){
+  const id=outcomeChain,data=state.chains[id]?.outcomes;
+  const host=$('outcomePlot'),cards=$('outcomeCards'),details=$('outcomeCases'),key=$('outcomeDetail');
+  host.replaceChildren();cards.replaceChildren();details.replaceChildren();
+  document.querySelectorAll('#outcomeControls button[data-chain]').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.chain)===id));
+  if(!data){key.textContent='Outcomes will appear with the next snapshot.';return;}
+  const keys=Object.keys(outcomeLabels), total=Object.values(data.totals).reduce((a,b)=>a+b,0), days=Object.entries(data.days);
+  cards.append(card('Bounties with a deadline',num.format(total)),...keys.map(k=>card(outcomeLabels[k],num.format(data.totals[k]))));
+  const max=Math.max(1,...days.map(([,c])=>Object.values(c).reduce((a,b)=>a+b,0)));
+  const chart=node('div',null,'outcomePlot');
+  const buttons=[];
+  function select(day,counts){
+    outcomeDay=day;
+    for(const b of buttons)b.setAttribute('aria-pressed',b.dataset.day===day);
+    key.textContent=short.format(iso(day))+' UTC · '+keys.map(k=>outcomeLabels[k]+': '+num.format(counts[k])).join(' · ');
+    const list=data.cases.filter(x=>x.day===day), ul=node('ul');
+    if(!list.length){details.replaceChildren(node('p','No bounty deadlines in this cohort.','muted'));return;}
+    const values=list.slice().sort((a,b)=>b.entries-a.entries||a.id.localeCompare(b.id)).slice(0,6);
+    for(const x of values){
+      if(!/^0x[0-9a-f]{64}$/i.test(x.id))continue;
+      const li=node('li'),a=node('a',x.title||'View bounty');a.href=bountyUrl(x.id);
+      li.append(a,node('span',outcomeLabels[x.state]+' · '+num.format(x.entries)+' submissions','label'));ul.append(li);
+    }
+    details.replaceChildren(node('p',list.length>6?'Six most-submitted bounties that day':'Bounties in this cohort','muted'),ul);
+  }
+  for(const [day,counts] of days){
+    const b=node('button',null,'outcomeDay'),stack=node('span',null,'outcomeStack');
+    b.type='button';b.dataset.day=day;b.setAttribute('aria-label',short.format(iso(day))+', '+keys.map(k=>outcomeLabels[k]+' '+counts[k]).join(', '));b.setAttribute('aria-pressed','false');stack.setAttribute('aria-hidden','true');
+    for(const k of keys){const span=node('span');span.dataset.outcome=k;span.style.height=(counts[k]*100/max)+'%';stack.append(span);}
+    b.append(stack,node('span',short.format(iso(day)),'label'));b.onclick=()=>select(day,counts);chart.append(b);buttons.push(b);
+  }
+  const legend=node('div',null,'outcomeKey');
+  for(const k of keys){const l=node('span',outcomeLabels[k]);l.dataset.outcome=k;legend.append(l);}
+  host.append(chart,legend);
+  const active=days.find(([d])=>d===outcomeDay)??days.slice().reverse().find(([,c])=>Object.values(c).some(Boolean));
+  if(active)select(...active);else key.textContent='No bounty deadlines in this date range.';
+}
+function sourceLog(){
+  $('sources').replaceChildren(table(['Public endpoint','Chain filter','Requests','Last response · UTC'],(state.sources??[]).map(x=>[x.endpoint,x.chainId?label(x.chainId):'None',num.format(x.requests),dt.format(iso(x.fetchedAt))])));
+}
 let initial=true;
 function stamp(){
   if(!state?.asOf)return;
@@ -172,8 +215,10 @@ async function load(){
   try{
     const res=await fetch('./api/snapshot.json');if(!res.ok)throw Error();
     state=await res.json();stamp();
-    overview();chainView();depth();signal();mix();feed();heat();$('surface').hidden=false;
-    if(initial&&focusSignal)$('bounty-signal').scrollIntoView();
+    overview();chainView();depth();signal();outcomes();mix();feed();heat();sourceLog();$('surface').hidden=false;
+    if(initial&&view==='signal')$('bounty-signal').scrollIntoView();
+    if(initial&&view==='outcomes')$('bounty-outcomes').scrollIntoView();
+    const o=document.querySelector('#bounty-outcomes .signalLink');o.href='./outcomes/?chain='+(outcomeChain===8453?'base':'tempo');
     if(initial&&signalChain===8453)document.querySelector('.signalLink').href='./signal/?chain=base';
     initial=false;
   }catch{if(state){state.stale=true;stamp()}else $('stamp').textContent='Live data is temporarily unavailable. Reload to try again.'}
@@ -186,6 +231,12 @@ $('signalControls').onclick=e=>{
   signalChain=Number(e.target.dataset.chain);
   const u=new URL(location.href);u.searchParams.set('chain',signalChain===8453?'base':'tempo');history.replaceState(null,'',u);signal();
   const a=document.querySelector('.signalLink');a.href='./signal/?chain='+(signalChain===8453?'base':'tempo');
+};
+$('outcomeControls').onclick=e=>{
+  if(!e.target.dataset.chain||!state)return;
+  outcomeChain=Number(e.target.dataset.chain);outcomeDay=undefined;
+  const u=new URL(location.href);u.searchParams.set('chain',outcomeChain===8453?'base':'tempo');history.replaceState(null,'',u);outcomes();
+  document.querySelector('#bounty-outcomes .signalLink').href='./outcomes/?chain='+(outcomeChain===8453?'base':'tempo');
 };
 matchMedia('(max-width: 680px)').addEventListener('change',()=>{if(state){overview();signal();}});
 load();setInterval(load,300_000);setInterval(stamp,60_000);

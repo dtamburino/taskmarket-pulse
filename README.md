@@ -26,11 +26,14 @@ Snapshots come from Taskmarket's public production API, without credentials.
 | Task status/mode and heatmap | `/api/stats/breakdowns`, `/api/stats/activity-heatmap` |
 | Latest events | `/api/stats/activity-feed`, filtered by each event's chain |
 | Chain-specific paid workers and active wallets | `/api/market/stats` |
+| Bounty Outcomes: seven complete UTC deadline cohorts | Public task deadline, state and award count; never inferred payment |
 | Bounty Signal: pools vs. entry counts | Status-filtered and paginated `/api/tasks`; accepting bounties only |
 | Last seven days of tasks by chain and weekly posters | Sorted, paginated `/api/tasks`, separately for each chain |
 
-Times are UTC and the current period is partial. Wallet addresses deduplicate requester counts but aren't published with the dashboard data. Base is 8453 and Tempo is 4217. The platform charts, mode breakdown, feed, and heatmap returned identical data when queried with each chain ID and are not presented as separate chain figures. The amount fields use six decimal places; dollar values represent posted stablecoin face values, not exchange prices.
+Times are UTC and the current period is partial. An on-page source receipt log records endpoint, chain filter, request count and last upstream response time for each source; downloading the JSON gets the exact snapshot shown. Wallet addresses deduplicate requester counts but aren't published with the dashboard data. Base is 8453 and Tempo is 4217. The platform charts, mode breakdown, feed, and heatmap returned identical data when queried with each chain ID and are not presented as separate chain figures. The amount fields use six decimal places; dollar values represent posted stablecoin face values, not exchange prices.
 
 ## License
 
 Project code is MIT. The supplied Taskmarket brand mark belongs to Taskmarket and is used here under the bounty's branding guidance; it is not licensed as project code. Font license texts are included with the assets. No wallet connection, analytics, or third-party logos.
+
+Brand fonts are served as WOFF2 from this site. Latin WOFF2 files are the official Google Fonts distribution of the same open-licensed Instrument Serif and Inter Tight families; font licenses are in the public directory. Original Instrument Serif fonts are retained as local inputs for generating share cards.

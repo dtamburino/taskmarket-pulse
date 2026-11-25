@@ -2,6 +2,8 @@ const origin = 'https://api.taskmarket.dev/api/';
 export const chains = [8453,4217];
 export const ttl = 300_000;
 const toDollars = v => Number(v ?? 0)/1e6;
+const publicTask=t=>(t.taskVisibility??'public')==='public';
+const titleOf=t=>String(t.description??'').split('\n')[0].slice(0,150).trim()||'Untitled bounty';
 const week = ts => {
   const d = new Date(ts.slice(0,10)+'T00:00:00Z');
   d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
@@ -33,11 +35,11 @@ export function concentration(tasks, since) {
     nextTwo:(ranks[1]??0)+(ranks[2]??0)};
 }
 export function bountySignal(tasks, chainId) {
-  const clean=[...new Map(tasks.filter(t=>t.chainId===chainId && t.mode==='bounty' &&
+  const clean=[...new Map(tasks.filter(t=>t.chainId===chainId && publicTask(t) && t.mode==='bounty' &&
     t.submissionWindowOpen===true && /^[a-f0-9]{64}$/i.test(t.id?.slice(2)??'') &&
     /^0x/i.test(t.id??'') && Number.isSafeInteger(t.submissionCount) && t.submissionCount>=0 &&
     Number.isFinite(Number(t.reward)) && toDollars(t.reward)>0).map(t=>[t.id,t])).values()]
-    .map(t=>({id:t.id, title:String(t.description??'').split('\n')[0].slice(0,150).trim()||'Untitled bounty',
+    .map(t=>({id:t.id, title:titleOf(t),
       entries:t.submissionCount, pool:toDollars(t.reward),
       expires:Number.isFinite(Date.parse(t.expiryTime))?t.expiryTime:null}));
   clean.sort((a,b)=>a.entries-b.entries||b.pool-a.pool||a.id.localeCompare(b.id));
@@ -45,11 +47,35 @@ export function bountySignal(tasks, chainId) {
   const median=clean.length?(clean[mid].entries+(clean.length%2?clean[mid].entries:clean[mid-1].entries))/2:null;
   return {count:clean.length,light:clean.filter(t=>t.entries<10).length,median,rows:clean};
 }
+export function deadlineOutcomes(tasks, now) {
+  const midnight=new Date(now);midnight.setUTCHours(0,0,0,0);
+  const start=new Date(+midnight-7*86400000), totals={awarded:0,review:0,closed:0};
+  const days={};
+  for(let d=new Date(start);d<midnight;d.setUTCDate(d.getUTCDate()+1))
+    days[d.toISOString().slice(0,10)]={awarded:0,review:0,closed:0};
+  const cases=[];
+  for(const t of tasks){
+    const deadline=Date.parse(t.expiryTime);
+    if(!publicTask(t)||t.mode!=='bounty'||!/^0x[0-9a-f]{64}$/i.test(t.id??'')||!Number.isFinite(deadline)||deadline<+start||deadline>=+midnight)continue;
+    const awards=Number(t.awardCount??0);
+    const status=awards>0?'awarded':(t.phase==='resolved'||t.status==='cancelled'||t.status==='completed')?'closed':'review';
+    const day=new Date(deadline).toISOString().slice(0,10);
+    totals[status]++;days[day][status]++;
+    cases.push({id:t.id,title:titleOf(t),day,state:status,awards,entries:Number(t.submissionCount??0)});
+  }
+  cases.sort((a,b)=>a.day.localeCompare(b.day)||a.id.localeCompare(b.id));
+  return {from:start.toISOString().slice(0,10),to:midnight.toISOString().slice(0,10),totals,days,cases};
+}
 export async function snapshot(fetcher=fetch, now=new Date()) {
+  const requested=new Map();
   const get=async (path,params={})=>{
+    const endpoint='/api/'+path, key=endpoint+(params.chainId?' · '+params.chainId:'');
     const res=await fetcher(origin+path+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(9_000),headers:{accept:'application/json'}});
     if (!res.ok) throw new Error(path+' returned '+res.status);
-    return res.json();
+    const data=await res.json();
+    const receipt=requested.get(key)??{endpoint,chainId:params.chainId??null,requests:0};
+    receipt.requests++;receipt.fetchedAt=new Date().toISOString();requested.set(key,receipt);
+    return data;
   };
   const from=new Date(now);
   from.setUTCHours(0,0,0,0);
@@ -64,13 +90,13 @@ export async function snapshot(fetcher=fetch, now=new Date()) {
       let beyond=false;
       for(const t of res.tasks){
         if (Date.parse(t.createdAt)<+from){beyond=true;continue}
-        if (t.chainId===chainId) tasks.set(t.id,t);
+        if (t.chainId===chainId&&publicTask(t)) tasks.set(t.id,t);
       }
       if (beyond || !res.hasMore){complete=true;break}
       if (!res.nextCursor || res.nextCursor===cursor) break;
       cursor=res.nextCursor;
     }
-    return {...summarize(tasks.values()),concentration:concentration(tasks.values(),since),complete,from:from.toISOString().slice(0,10)};
+    return {...summarize(tasks.values()),concentration:concentration(tasks.values(),since),outcomes:deadlineOutcomes(tasks.values(),now),complete,from:from.toISOString().slice(0,10)};
   };
   const open=async chainId=>{
     const all=[];let cursor;
@@ -92,7 +118,7 @@ export async function snapshot(fetcher=fetch, now=new Date()) {
     Promise.all(chains.map(scan)),
     Promise.all(chains.map(open))
   ]);
-  return {asOf:new Date().toISOString(),signals:Object.fromEntries(chains.map((id,i)=>[id,signals[i]])),series:series.map(x=>({...x,rewardVolume:toDollars(x.rewardVolume),paidVolume:toDollars(x.paidVolume)})),
+  return {asOf:new Date().toISOString(),sources:[...requested.values()].sort((a,b)=>a.endpoint.localeCompare(b.endpoint)||(a.chainId??0)-(b.chainId??0)),signals:Object.fromEntries(chains.map((id,i)=>[id,signals[i]])),series:series.map(x=>({...x,rewardVolume:toDollars(x.rewardVolume),paidVolume:toDollars(x.paidVolume)})),
     breakdowns,heat:{rows:heat.rowKeys,days:heat.colKeys,cells:heat.cells.map(({row,col,count})=>({row,col,count})),max:heat.maxCount},
     feed:feed.items.filter(x=>chains.includes(x.chainId)).map(({type,timestamp,taskId,taskTitle,chainId,amount})=>({type,timestamp,taskId,taskTitle,chainId,amount:amount==null?null:toDollars(amount)})),
     chains:Object.fromEntries(chains.map((id,i)=>[id,{stats:stats[i],...coverage[i]}]))};

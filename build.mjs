@@ -8,24 +8,25 @@ if(Object.values(data.chains).some(chain=>!chain.complete))throw Error('Task fee
 await mkdir(new URL('api/',out),{recursive:true});
 await cp(new URL('./public/',import.meta.url),out,{recursive:true});
 await writeFile(new URL('api/snapshot.json',out),JSON.stringify(data));
-await mkdir(new URL('signal/',out),{recursive:true});
-if(url){
-  const html=new URL('index.html',out);
-  const site=url.replace(/\/$/,'');
-  const text=(await readFile(html,'utf8')).replace('content="/share.png"',`content="${site}/share.png"`).replace('</head>',`<meta property="og:url" content="${site}/"><link rel="canonical" href="${site}/"><meta name="twitter:card" content="summary_large_image"></head>`);
-  await writeFile(html,text);
-  const focused=text.replace('<html lang="en">','<html lang="en" data-view="signal">')
-    .replace('<head>','<head><base href="../">')
-    .replace('<title>Taskmarket Pulse</title>','<title>Bounty Signal | Taskmarket Pulse</title>')
-    .replace('property="og:title" content="Taskmarket Pulse"','property="og:title" content="Where attention goes | Taskmarket Pulse"')
-    .replace('property="og:description" content="Follow task creation, rewards, and activity across Base and Tempo."',
-      'property="og:description" content="Compare posted reward pools and submission counts for open bounties on Base and Tempo."')
-    .replace(`${site}/share.png`,`${site}/signal-share.png`)
-    .replace(`content="${site}/"><link rel="canonical" href="${site}/"`,`content="${site}/signal/"><link rel="canonical" href="${site}/signal/"`);
-  await writeFile(new URL('signal/index.html',out),focused);
-}
-if(!url){
-  const src=await readFile(new URL('index.html',out),'utf8');
-  await writeFile(new URL('signal/index.html',out),src.replace('<html lang="en">','<html lang="en" data-view="signal">').replace('<head>','<head><base href="../">'));
+const site=url.replace(/\/$/,'');
+const html=new URL('index.html',out);
+const raw=await readFile(html,'utf8');
+const decorate=(text,slug,title,desc,image)=>{
+  const canonical=site+'/'+(slug?slug+'/':'');
+  return text.replace('content="Taskmarket Pulse"',`content="${title}"`)
+    .replace('<title>Taskmarket Pulse</title>',`<title>${title}</title>`)
+    .replace('Follow task creation, rewards, and activity across Base and Tempo.',desc)
+    .replace('content="/share.png"',`content="${site}/${image}"`)
+    .replace('</head>',`<meta property="og:url" content="${canonical}"><link rel="canonical" href="${canonical}"><meta name="twitter:card" content="summary_large_image"></head>`);
+};
+if(site)await writeFile(html,decorate(raw,'','Taskmarket Pulse','Follow task creation, rewards, and activity across Base and Tempo.','share.png'));
+const views=[
+  ['signal','Where attention goes | Taskmarket Pulse','Compare posted reward pools and submissions for open bounties on Base and Tempo.','signal-share.png'],
+  ['outcomes','Which bounties found a winner? | Taskmarket Pulse','See how seven completed deadline cohorts resolved on Base and Tempo.','outcomes-share.png']
+];
+for(const [slug,title,desc,image] of views){
+  await mkdir(new URL(slug+'/',out),{recursive:true});
+  const focused=raw.replace('<html lang="en">',`<html lang="en" data-view="${slug}">`).replace('<head>','<head><base href="../">');
+  await writeFile(new URL(slug+'/index.html',out),site?decorate(focused,slug,title,desc,image):focused);
 }
 console.log('Built verified snapshot',data.asOf);
